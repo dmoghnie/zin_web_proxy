@@ -51,7 +51,7 @@ docker run -d -p 443:3000 \
 The proxy can automatically request and renew Let's Encrypt certificates:
 
 ```bash
-# Make sure the container has access to port 80 for ACME challenge
+# IMPORTANT: Port 80 MUST be mapped to port 80 for Let's Encrypt validation to work
 docker run -d \
   -p 443:3000 \
   -p 80:80 \
@@ -64,7 +64,16 @@ docker run -d \
   zin-web-proxy
 ```
 
-> **Note:** When using Let's Encrypt, your server must be publicly accessible on both port 80 (for ACME challenge) and port 443 (for HTTPS). The domain name must point to your server.
+> **IMPORTANT:** For Let's Encrypt to work properly:
+> 1. Your server MUST be publicly accessible on the internet
+> 2. Port 80 MUST be mapped correctly and accessible from the internet (for ACME challenge)
+> 3. The domain name (LETSENCRYPT_DOMAIN) must point to your server's public IP address
+> 4. Do not use port mapping like 8080:80 - it must be 80:80 for Let's Encrypt validation
+
+For debugging Let's Encrypt issues, visit:
+```
+http://your-domain.com/.well-known/acme-challenge-debug
+```
 
 ## Environment Variables
 

@@ -8,6 +8,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const acme = require('acme-client');
+const express = require('express');
 
 const execAsync = promisify(exec);
 const mkdir = promisify(fs.mkdir);
@@ -29,6 +30,8 @@ class CertificateManager {
     // Used for HTTP-01 challenge server
     this.app = options.app;
     this.challengeDir = path.join(this.sslDir, 'acme-challenge');
+    // Store active challenges
+    this.activeTokens = {};
   }
 
   /**
@@ -83,13 +86,23 @@ class CertificateManager {
       throw new Error('Express app not provided for challenge middleware');
     }
     
-    // Serve ACME challenge files
+    // Serve ACME challenge files - This must have highest priority!
     this.app.use('/.well-known/acme-challenge', (req, res, next) => {
       const challengeToken = req.path.split('/').pop();
+      
+      // First check if we have this token in memory (for immediate challenges)
+      if (this.activeTokens[challengeToken]) {
+        this.logger.log(`Serving token from memory: ${challengeToken}`);
+        res.set('Content-Type', 'text/plain');
+        return res.send(this.activeTokens[challengeToken]);
+      }
+      
+      // If not in memory, try to read from file
       const challengePath = path.join(this.challengeDir, challengeToken);
       
       fs.readFile(challengePath, 'utf8', (err, data) => {
         if (err) {
+          this.logger.error(`Error reading challenge token: ${err.message}`);
           return next();
         }
         res.set('Content-Type', 'text/plain');
@@ -97,7 +110,71 @@ class CertificateManager {
       });
     });
     
+    // For debugging - list all available challenge tokens
+    this.app.get('/.well-known/acme-challenge-debug', (req, res) => {
+      fs.readdir(this.challengeDir, (err, files) => {
+        if (err) {
+          return res.status(500).send(`Error reading challenge directory: ${err.message}`);
+        }
+        
+        // List all tokens
+        const memoryTokens = Object.keys(this.activeTokens);
+        res.send({
+          memoryTokens,
+          fileTokens: files,
+          domain: this.domain,
+          challengeDir: this.challengeDir
+        });
+      });
+    });
+    
     this.logger.log('HTTP-01 challenge middleware set up');
+  }
+  
+  /**
+   * Set up a standalone HTTP server for ACME challenge if needed
+   */
+  setupStandaloneServer() {
+    // Only start if we're using port 80 and don't have a custom app
+    if (this.port === 80 && !this.app) {
+      this.logger.log('Setting up standalone HTTP server for ACME challenges on port 80');
+      
+      const app = express();
+      
+      // Serve ACME challenge files
+      app.use('/.well-known/acme-challenge', (req, res) => {
+        const challengeToken = req.path.split('/').pop();
+        
+        // First check if we have this token in memory
+        if (this.activeTokens[challengeToken]) {
+          this.logger.log(`Serving token from memory: ${challengeToken}`);
+          res.set('Content-Type', 'text/plain');
+          return res.send(this.activeTokens[challengeToken]);
+        }
+        
+        // If not in memory, try to read from file
+        const challengePath = path.join(this.challengeDir, challengeToken);
+        
+        fs.readFile(challengePath, 'utf8', (err, data) => {
+          if (err) {
+            this.logger.error(`Error reading challenge token: ${err.message}`);
+            return res.status(404).send('Challenge not found');
+          }
+          res.set('Content-Type', 'text/plain');
+          res.send(data);
+        });
+      });
+      
+      // Default response for all other requests
+      app.use((req, res) => {
+        res.send('ACME Challenge Server');
+      });
+      
+      // Store the HTTP server so we can close it later
+      this.httpServer = app.listen(80, () => {
+        this.logger.log('ACME Challenge server is running on port 80');
+      });
+    }
   }
   
   /**
@@ -107,6 +184,9 @@ class CertificateManager {
     if (!this.domain || !this.email) {
       throw new Error('Domain and email are required for certificate request');
     }
+    
+    // Start standalone server if needed
+    this.setupStandaloneServer();
     
     this.logger.log(`Requesting new certificates for ${this.domain}`);
     
@@ -130,12 +210,39 @@ class CertificateManager {
       
       // Handle HTTP-01 challenge
       const challengeCreateFn = async (authz, challenge, keyAuthorization) => {
+        // Store challenge both in memory and in file for redundancy
+        this.activeTokens[challenge.token] = keyAuthorization;
+        
         const challengeFile = path.join(this.challengeDir, challenge.token);
         await writeFile(challengeFile, keyAuthorization);
         this.logger.log(`Created challenge file at: ${challengeFile}`);
+        
+        // For debugging: check if the challenge file is accessible
+        try {
+          // Try to access it via local filesystem
+          await access(challengeFile, fs.constants.R_OK);
+          this.logger.log(`Challenge file is readable: ${challengeFile}`);
+          
+          // If we're in development mode, we could curl the challenge URL directly
+          // This could be enabled for debugging but requires curl to be installed
+          if (!this.production) {
+            try {
+              await execAsync(`curl -s http://${this.domain}/.well-known/acme-challenge/${challenge.token}`);
+              this.logger.log(`Successfully accessed challenge via HTTP request`);
+            } catch (e) {
+              this.logger.log(`Warning: Could not access challenge via HTTP: ${e.message}`);
+            }
+          }
+        } catch (e) {
+          this.logger.error(`Warning: Challenge file might not be accessible: ${e.message}`);
+        }
       };
       
       const challengeRemoveFn = async (authz, challenge) => {
+        // Remove from memory
+        delete this.activeTokens[challenge.token];
+        
+        // Remove from filesystem
         const challengeFile = path.join(this.challengeDir, challenge.token);
         try {
           await promisify(fs.unlink)(challengeFile);
@@ -152,6 +259,7 @@ class CertificateManager {
       });
       
       // Get certificate
+      this.logger.log(`Submitting certificate request for ${this.domain}...`);
       const certificate = await client.auto({
         csr,
         email: this.email,
@@ -161,14 +269,30 @@ class CertificateManager {
         challengePriority: ['http-01']
       });
       
+      this.logger.log(`Certificate request successful! Saving certificates...`);
+      
       // Save certificate and key
       await writeFile(this.keyPath, key);
       await writeFile(this.certPath, certificate);
       
       this.logger.log(`Certificates successfully saved to ${this.sslDir}`);
+      
+      // Close standalone server if we created one
+      if (this.httpServer) {
+        this.httpServer.close();
+        this.logger.log('Closed standalone ACME challenge server');
+      }
+      
       return true;
     } catch (error) {
       this.logger.error('Error requesting certificates:', error);
+      
+      // Close standalone server if we created one
+      if (this.httpServer) {
+        this.httpServer.close();
+        this.logger.log('Closed standalone ACME challenge server');
+      }
+      
       return false;
     }
   }

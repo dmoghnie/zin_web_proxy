@@ -1,5 +1,8 @@
 FROM node:18-alpine
 
+# Install curl for ACME challenge testing
+RUN apk add --no-cache curl
+
 # Create app directory
 WORKDIR /app
 
@@ -14,6 +17,7 @@ COPY . .
 RUN mkdir -p public
 RUN mkdir -p ssl
 RUN mkdir -p ssl/acme-challenge
+RUN chmod -R 755 ssl
 
 # Default environment variables
 ENV PORT=3000
@@ -28,7 +32,7 @@ ENV LETSENCRYPT_PRODUCTION=false
 
 # Expose the port the app runs on
 EXPOSE 3000
-# Also expose port 80 for Let's Encrypt HTTP challenge
+# Also expose port 80 for Let's Encrypt HTTP challenge - MUST be exposed
 EXPOSE 80
 
 # Command to run the application
