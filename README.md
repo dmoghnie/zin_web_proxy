@@ -1,51 +1,92 @@
 # Zin Web Proxy
 
-A full-featured web proxy similar to CroxyProxy that allows browsing websites through a proxy with support for images, CSS, JavaScript and other resources.
+A robust web proxy server for proxying HTTPS traffic.
 
 ## Features
 
-- **Complete Resource Proxying**: Handles HTML, CSS, JavaScript, images and all other web resources
-- **URL Rewriting**: Automatically rewrites all URLs in HTML, CSS, and JavaScript to route through the proxy
-- **Session Management**: Maintains cookies and session state for websites requiring login
-- **JavaScript Support**: Advanced handling of dynamically loaded content via JavaScript
-- **DOM Monitoring**: Uses MutationObserver to rewrite URLs added by JavaScript after page load
-- **Browser History**: Tracks browsing history for easy navigation between sites
-- **CORS Bypass**: Circumvents cross-origin restrictions
-- **Private Browsing**: Create new sessions with isolated cookies
+- Full HTTP/HTTPS proxying support
+- WebSocket support for real-time applications
+- Advanced HTML rewriting to handle links, forms, and JavaScript redirects
+- Cookie management across requests
+- Support for ASPX applications
+- HTTPS server capabilities
+- Automatic Let's Encrypt certificate management
 
-## Installation
+## Setup
 
-1. Clone this repository:
-```
-git clone https://github.com/yourusername/zin-web-proxy.git
-cd zin-web-proxy
-```
+### Quick Start
 
-2. Install dependencies:
-```
-npm install
-```
+```bash
+# Build the Docker image
+docker build -t zin-web-proxy .
 
-3. Start the server:
-```
-npm start
+# Run with HTTP
+docker run -d -p 82:3000 zin-web-proxy
+
+# Or run with port mapping of your choice
+docker run -d -p <host-port>:3000 zin-web-proxy
 ```
 
-The server will run on http://localhost:3000 by default.
+### Using HTTPS
 
-## Development
+#### Option 1: Self-signed certificates (for development)
 
-To run the server with auto-reload during development:
+Generate self-signed certificates:
+
+```bash
+mkdir -p ssl
+openssl req -x509 -newkey rsa:4096 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes
 ```
-npm run dev
+
+Run with HTTPS enabled:
+```bash
+docker run -d -p 443:3000 \
+  -v $(pwd)/ssl:/app/ssl \
+  -e USE_HTTPS=true \
+  zin-web-proxy
 ```
+
+#### Option 2: Automatic Let's Encrypt certificates (recommended for production)
+
+The proxy can automatically request and renew Let's Encrypt certificates:
+
+```bash
+# Make sure the container has access to port 80 for ACME challenge
+docker run -d \
+  -p 443:3000 \
+  -p 80:80 \
+  -e USE_HTTPS=true \
+  -e USE_LETSENCRYPT=true \
+  -e LETSENCRYPT_EMAIL=your-email@example.com \
+  -e LETSENCRYPT_DOMAIN=your-domain.com \
+  -e LETSENCRYPT_PRODUCTION=true \
+  -v letsencrypt-certs:/app/ssl \
+  zin-web-proxy
+```
+
+> **Note:** When using Let's Encrypt, your server must be publicly accessible on both port 80 (for ACME challenge) and port 443 (for HTTPS). The domain name must point to your server.
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| PORT | Port to run the server on | 3000 |
+| USE_HTTPS | Enable HTTPS for the proxy server | false |
+| VERIFY_SSL | Verify SSL certificates of target sites | true |
+| SSL_KEY_PATH | Path to SSL private key | /app/ssl/key.pem |
+| SSL_CERT_PATH | Path to SSL certificate | /app/ssl/cert.pem |
+| USE_LETSENCRYPT | Use Let's Encrypt for certificates | false |
+| LETSENCRYPT_EMAIL | Email for Let's Encrypt registration | admin@example.com |
+| LETSENCRYPT_DOMAIN | Domain name for the certificate | localhost |
+| LETSENCRYPT_PRODUCTION | Use Let's Encrypt production (vs staging) | false |
 
 ## Usage
 
-1. Open your browser and go to http://localhost:3000
-2. Enter the URL of the website you want to access
-3. Click "Browse" to access the website through the proxy
-4. For a new session with fresh cookies, click "New Session"
+Access the proxy at:
+- HTTP mode: `http://localhost:<port>/proxy?url=https://example.com`
+- WebSocket support: `http://localhost:<port>/direct-proxy?url=https://example.com`
+
+For HTTPS mode, replace http with https in the proxy URLs.
 
 ## Technical Details
 

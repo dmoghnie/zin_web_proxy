@@ -10,11 +10,26 @@ RUN npm install
 # Copy application code
 COPY . .
 
-# Create directory for public files if it doesn't exist
+# Create necessary directories
 RUN mkdir -p public
+RUN mkdir -p ssl
+RUN mkdir -p ssl/acme-challenge
+
+# Default environment variables
+ENV PORT=3000
+ENV USE_HTTPS=false
+ENV VERIFY_SSL=true
+ENV SSL_KEY_PATH=/app/ssl/key.pem
+ENV SSL_CERT_PATH=/app/ssl/cert.pem
+ENV USE_LETSENCRYPT=false
+ENV LETSENCRYPT_EMAIL=admin@example.com
+ENV LETSENCRYPT_DOMAIN=localhost
+ENV LETSENCRYPT_PRODUCTION=false
 
 # Expose the port the app runs on
 EXPOSE 3000
+# Also expose port 80 for Let's Encrypt HTTP challenge
+EXPOSE 80
 
 # Command to run the application
 CMD ["node", "src/index.js"] 

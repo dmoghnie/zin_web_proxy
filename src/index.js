@@ -10,6 +10,10 @@ const url = require('url');
 const stream = require('stream');
 const { promisify } = require('util');
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const fs = require('fs');
+const http = require('http');
+const https = require('https');
+const CertificateManager = require('./cert-manager');
 
 const pipeline = promisify(stream.pipeline);
 
@@ -20,6 +24,11 @@ const PORT = process.env.PORT || 3000;
 const cache = new Map();
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_CACHE_SIZE = 100;
+
+// Option to configure HTTPS for the proxy server itself
+const useHttps = process.env.USE_HTTPS === 'true';
+const useLetsEncrypt = process.env.USE_LETSENCRYPT === 'true';
+let httpsOptions = {};
 
 // Middleware
 app.use(cors());
@@ -40,7 +49,7 @@ const setupDirectProxy = () => {
     target: 'https://sunitalia.stoneprofits.com', // Default target
     changeOrigin: true,
     ws: true, // Enable WebSocket support by default
-    secure: false, // Don't verify SSL certs
+    secure: process.env.VERIFY_SSL !== 'false', // Verify SSL certs by default, can be disabled
     onProxyReq: (proxyReq, req, res) => {
       // Use the session cookies if available
       const session = getSession(req);
@@ -612,17 +621,44 @@ app.use('/direct-proxy', function(req, res, next) {
             }
           });
           
-          // Adjust WebSocket connections
+          // Intercept and proxy WebSocket connections
           const originalWebSocket = window.WebSocket;
           window.WebSocket = function(url, protocols) {
-            // Try to use same protocol as page
-            let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            // Get original domain from URL
-            let originalUrl = new URL(url);
-            
-            // Create a proxied WebSocket connection
-            console.log('Proxying WebSocket connection to:', url);
-            return new originalWebSocket(url, protocols);
+            // Handle both ws:// and wss:// protocols properly
+            try {
+              // Parse the original URL
+              const parsedUrl = new URL(url);
+              // Get the current page protocol (http:// or https://)
+              const pageProtocol = window.location.protocol;
+              // Use appropriate WebSocket protocol based on page protocol
+              const wsProtocol = pageProtocol === 'https:' ? 'wss:' : 'ws:';
+              
+              console.log('Intercepting WebSocket connection to:', url);
+              
+              // Create the proxied URL
+              // Instead of connecting directly, we could route through our proxy
+              // For now, just using the same URL but ensuring protocol matches
+              
+              // This is where we'd rewrite to go through a proxy path if needed
+              // const proxyUrl = wsProtocol + '//' + window.location.host + '/ws-proxy?url=' + encodeURIComponent(url);
+              
+              // For simplicity with direct connections, just ensure protocol consistency
+              let proxyUrl = url;
+              if (parsedUrl.protocol === 'ws:' && wsProtocol === 'wss:') {
+                // Upgrade to secure WebSocket if page is https
+                proxyUrl = 'wss:' + url.substring(3);
+              } else if (parsedUrl.protocol === 'wss:' && wsProtocol === 'ws:') {
+                // Downgrade to regular WebSocket if page is http
+                proxyUrl = 'ws:' + url.substring(4);
+              }
+              
+              console.log('Proxying WebSocket to:', proxyUrl);
+              return new originalWebSocket(proxyUrl, protocols);
+            } catch (e) {
+              console.error('Error proxying WebSocket:', e);
+              // Fallback to original behavior
+              return new originalWebSocket(url, protocols);
+            }
           };
           
           console.log('Direct proxy client script loaded');
@@ -2007,6 +2043,99 @@ setInterval(() => {
 // Handle errors
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Proxy server running on http://localhost:${PORT}`);
+// Main server startup function
+async function startServer() {
+  // Set up certificate manager if Let's Encrypt is enabled
+  if (useHttps && useLetsEncrypt) {
+    try {
+      console.log('Setting up Let\'s Encrypt certificate manager...');
+      
+      const certManager = new CertificateManager({
+        domain: process.env.LETSENCRYPT_DOMAIN,
+        email: process.env.LETSENCRYPT_EMAIL,
+        sslDir: path.dirname(process.env.SSL_CERT_PATH || path.join(__dirname, '../ssl')),
+        keyPath: process.env.SSL_KEY_PATH || path.join(__dirname, '../ssl/key.pem'),
+        certPath: process.env.SSL_CERT_PATH || path.join(__dirname, '../ssl/cert.pem'),
+        production: process.env.LETSENCRYPT_PRODUCTION === 'true',
+        app: app
+      });
+      
+      // Ensure certificates exist and are valid
+      const certResult = await certManager.ensureCertificates();
+      
+      if (certResult.hasValidCerts) {
+        console.log('Valid Let\'s Encrypt certificates available');
+        httpsOptions = {
+          key: fs.readFileSync(certResult.keyPath),
+          cert: fs.readFileSync(certResult.certPath)
+        };
+      } else {
+        console.error('Failed to obtain Let\'s Encrypt certificates');
+        console.log('Falling back to HTTP server');
+        useHttps = false;
+      }
+    } catch (error) {
+      console.error('Error setting up Let\'s Encrypt:', error);
+      console.log('Falling back to HTTP server');
+      useHttps = false;
+    }
+  }
+  // Use regular certificate loading if Let's Encrypt is not enabled
+  else if (useHttps) {
+    try {
+      // Try to load SSL certificate and key from files
+      httpsOptions = {
+        key: fs.readFileSync(process.env.SSL_KEY_PATH || path.join(__dirname, '../ssl/key.pem')),
+        cert: fs.readFileSync(process.env.SSL_CERT_PATH || path.join(__dirname, '../ssl/cert.pem')),
+      };
+      console.log('Loaded SSL certificates for HTTPS server');
+    } catch (e) {
+      console.error('Error loading SSL certificates:', e.message);
+      console.log('Falling back to HTTP server');
+      useHttps = false;
+    }
+  }
+
+  // Configure HTTPS for the proxy server itself
+  if (useHttps) {
+    const httpsServer = https.createServer(httpsOptions, app);
+    
+    // Set up WebSocket handling for HTTPS server
+    const directProxyMiddleware = setupDirectProxy();
+    app.use('/direct-proxy', directProxyMiddleware);
+    
+    // Make sure WebSocket upgrade requests are handled by the proxy middleware
+    httpsServer.on('upgrade', function (req, socket, head) {
+      if (req.url.startsWith('/direct-proxy')) {
+        directProxyMiddleware.upgrade(req, socket, head);
+      }
+    });
+    
+    httpsServer.listen(PORT, () => {
+      console.log(`Proxy server running on https://localhost:${PORT}`);
+    });
+  } else {
+    const httpServer = http.createServer(app);
+    
+    // Set up WebSocket handling for HTTP server
+    const directProxyMiddleware = setupDirectProxy();
+    app.use('/direct-proxy', directProxyMiddleware);
+    
+    // Make sure WebSocket upgrade requests are handled by the proxy middleware
+    httpServer.on('upgrade', function (req, socket, head) {
+      if (req.url.startsWith('/direct-proxy')) {
+        directProxyMiddleware.upgrade(req, socket, head);
+      }
+    });
+    
+    httpServer.listen(PORT, () => {
+      console.log(`Proxy server running on http://localhost:${PORT}`);
+    });
+  }
+}
+
+// Start the server
+startServer().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });

@@ -16,7 +16,9 @@
     "node-fetch": "^2.6.9",
     "cookie-parser": "^1.4.6",
     "axios": "^1.6.2",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "greenlock-express": "^4.0.3",
+    "acme-client": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
