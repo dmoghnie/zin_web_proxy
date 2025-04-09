@@ -14,17 +14,42 @@ A robust web proxy server for proxying HTTPS traffic.
 
 ## Setup
 
-### Quick Start
+### Quick Start with Helper Script
+
+The easiest way to set up and run the proxy is with the included helper script:
 
 ```bash
-# Build the Docker image
-docker build -t zin-web-proxy .
+# Make the script executable
+chmod +x start.sh
+
+# Show help and all options
+./start.sh --help
 
 # Run with HTTP
-docker run -d -p 82:3000 zin-web-proxy
+./start.sh 
 
-# Or run with port mapping of your choice
-docker run -d -p <host-port>:3000 zin-web-proxy
+# Run with self-signed SSL certificates
+./start.sh --ssl self-signed --domain your-domain.com
+
+# Run with Let's Encrypt certificates
+./start.sh --ssl letsencrypt --domain your-domain.com --email your@email.com --production
+
+# Use existing certificates from Let's Encrypt or elsewhere
+./start.sh --ssl external --cert /path/to/cert.pem --key /path/to/key.pem
+```
+
+### Manual Setup
+
+#### Build the Docker image
+
+```bash
+docker build -t zin-web-proxy .
+```
+
+#### Run with HTTP
+
+```bash
+docker run -d -p 82:3000 zin-web-proxy
 ```
 
 ### Using HTTPS
@@ -61,6 +86,24 @@ docker run -d \
   -e LETSENCRYPT_DOMAIN=your-domain.com \
   -e LETSENCRYPT_PRODUCTION=true \
   -v letsencrypt-certs:/app/ssl \
+  zin-web-proxy
+```
+
+#### Option 3: Using Certbot (external to container)
+
+If you prefer to manage certificates separately:
+
+1. Generate certificates with certbot on your host:
+```bash
+sudo certbot certonly --standalone -d your-domain.com
+```
+
+2. Mount the certificates into the container:
+```bash
+docker run -d -p 443:3000 \
+  -v /etc/letsencrypt/live/your-domain.com/fullchain.pem:/app/ssl/cert.pem \
+  -v /etc/letsencrypt/live/your-domain.com/privkey.pem:/app/ssl/key.pem \
+  -e USE_HTTPS=true \
   zin-web-proxy
 ```
 

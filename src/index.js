@@ -26,7 +26,7 @@ const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_CACHE_SIZE = 100;
 
 // Option to configure HTTPS for the proxy server itself
-const useHttps = process.env.USE_HTTPS === 'true';
+let useHttps = process.env.USE_HTTPS === 'true';
 const useLetsEncrypt = process.env.USE_LETSENCRYPT === 'true';
 let httpsOptions = {};
 
@@ -2083,10 +2083,22 @@ async function startServer() {
   // Use regular certificate loading if Let's Encrypt is not enabled
   else if (useHttps) {
     try {
+      // Carefully check if the paths exist and are files, not directories
+      const keyPath = process.env.SSL_KEY_PATH || path.join(__dirname, '../ssl/key.pem');
+      const certPath = process.env.SSL_CERT_PATH || path.join(__dirname, '../ssl/cert.pem');
+      
+      // Verify both paths are files, not directories
+      const keyStats = fs.statSync(keyPath);
+      const certStats = fs.statSync(certPath);
+      
+      if (keyStats.isDirectory() || certStats.isDirectory()) {
+        throw new Error('SSL paths point to directories instead of files');
+      }
+      
       // Try to load SSL certificate and key from files
       httpsOptions = {
-        key: fs.readFileSync(process.env.SSL_KEY_PATH || path.join(__dirname, '../ssl/key.pem')),
-        cert: fs.readFileSync(process.env.SSL_CERT_PATH || path.join(__dirname, '../ssl/cert.pem')),
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
       };
       console.log('Loaded SSL certificates for HTTPS server');
     } catch (e) {
