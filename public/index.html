@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zin Web Proxy</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        .container {
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            background-color: white;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+        }
+        .form-group {
+            margin-bottom: 25px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+        }
+        input[type="url"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input[type="url"]:focus {
+            border-color: #3498db;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+        }
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background-color 0.3s, transform 0.2s;
+            min-width: 120px;
+        }
+        button:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button.secondary {
+            background-color: #95a5a6;
+        }
+        button.secondary:hover {
+            background-color: #7f8c8d;
+        }
+        button.advanced {
+            background-color: #e67e22;
+        }
+        button.advanced:hover {
+            background-color: #d35400;
+        }
+        .info {
+            margin-top: 30px;
+            font-size: 15px;
+            color: #555;
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+        .info h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .history {
+            margin-top: 30px;
+        }
+        .history h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .history-items {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 0;
+            margin: 0;
+        }
+        .history-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            list-style: none;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .history-item:hover {
+            background-color: #f5f7fa;
+        }
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        .clear-btn {
+            margin-top: 10px;
+            background-color: #e74c3c;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .feature-list {
+            margin-top: 15px;
+            padding-left: 20px;
+        }
+        .feature-list li {
+            margin-bottom: 5px;
+        }
+        .status {
+            display: none;
+            text-align: center;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 8px;
+            background-color: #edf7ed;
+            color: #2e7d32;
+            font-weight: 600;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            border-bottom: 3px solid transparent;
+            font-weight: 600;
+        }
+        .tab.active {
+            border-bottom: 3px solid #3498db;
+            color: #3498db;
+        }
+        .tab:hover:not(.active) {
+            background-color: #f5f7fa;
+        }
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .toggle-label {
+            margin-right: 10px;
+            font-weight: 600;
+        }
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #3498db;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .toggle-text {
+            margin-left: 10px;
+            font-size: 14px;
+        }
+        .advanced-options {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            display: none;
+        }
+        .advanced-toggle {
+            cursor: pointer;
+            color: #3498db;
+            text-decoration: underline;
+            text-align: center;
+            display: block;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Zin Web Proxy</h1>
+        
+        <div class="form-group">
+            <label for="url">Enter Website URL:</label>
+            <input type="url" id="url" name="url" placeholder="https://example.com" required>
+        </div>
+        
+        <div class="advanced-toggle" onclick="toggleAdvancedOptions()">
+            Show Advanced Options
+        </div>
+        
+        <div id="advanced-options" class="advanced-options">
+            <div class="toggle-container">
+                <span class="toggle-label">Use Direct Proxy:</span>
+                <label class="toggle">
+                    <input type="checkbox" id="use-direct-proxy">
+                    <span class="slider"></span>
+                </label>
+                <span class="toggle-text">Better for WebSockets and dynamic content</span>
+            </div>
+            
+            <div class="toggle-container">
+                <span class="toggle-label">Use WebSockets:</span>
+                <label class="toggle">
+                    <input type="checkbox" id="use-websockets" checked>
+                    <span class="slider"></span>
+                </label>
+                <span class="toggle-text">Required for real-time applications</span>
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="navigateToProxy()">Browse</button>
+            <button class="secondary" onclick="newSession()">New Session</button>
+            <button class="advanced" onclick="testConnection()">Test Connection</button>
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="history">
+            <h3>Browse History</h3>
+            <ul id="history-items" class="history-items"></ul>
+            <button class="clear-btn" onclick="clearHistory()">Clear History</button>
+        </div>
+        
+        <div class="info">
+            <h3>Features:</h3>
+            <ul class="feature-list">
+                <li>Full support for images, CSS, JavaScript and other embedded content</li>
+                <li>WebSocket support for real-time applications</li>
+                <li>Session management for maintaining cookies and state</li>
+                <li>URL rewriting to ensure all resources load through the proxy</li>
+                <li>CORS bypass for accessing restricted content</li>
+                <li>Direct proxy mode for enhanced compatibility</li>
+                <li>Browser history tracking for easy navigation</li>
+            </ul>
+            
+            <h3>Note:</h3>
+            <p>Some websites may detect proxy usage and block access or not function correctly. This is normal for most proxy services.</p>
+            <p>For private browsing, start a new session using the button above.</p>
+            <p>If a site doesn't work well with the standard proxy, try the direct proxy option in advanced settings.</p>
+        </div>
+    </div>
+
+    <script>
+        // Load history from localStorage
+        const loadHistory = () => {
+            const history = JSON.parse(localStorage.getItem('proxyHistory') || '[]');
+            const historyElement = document.getElementById('history-items');
+            historyElement.innerHTML = '';
+            
+            history.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'history-item';
+                li.textContent = item;
+                li.onclick = () => {
+                    document.getElementById('url').value = item;
+                    navigateToProxy();
+                };
+                historyElement.appendChild(li);
+            });
+        };
+        
+        // Save URL to history
+        const saveToHistory = (url) => {
+            const history = JSON.parse(localStorage.getItem('proxyHistory') || '[]');
+            // Remove if already exists
+            const filtered = history.filter(item => item !== url);
+            // Add to beginning
+            filtered.unshift(url);
+            // Keep only 10 items
+            const trimmed = filtered.slice(0, 10);
+            localStorage.setItem('proxyHistory', JSON.stringify(trimmed));
+            loadHistory();
+        };
+        
+        // Clear history
+        const clearHistory = () => {
+            localStorage.removeItem('proxyHistory');
+            loadHistory();
+            showStatus('History cleared!');
+        };
+        
+        // Toggle advanced options
+        const toggleAdvancedOptions = () => {
+            const advancedOptions = document.getElementById('advanced-options');
+            const toggleText = document.querySelector('.advanced-toggle');
+            
+            if (advancedOptions.style.display === 'block') {
+                advancedOptions.style.display = 'none';
+                toggleText.textContent = 'Show Advanced Options';
+            } else {
+                advancedOptions.style.display = 'block';
+                toggleText.textContent = 'Hide Advanced Options';
+            }
+        };
+        
+        // Navigate to the proxy URL
+        const navigateToProxy = () => {
+            const url = document.getElementById('url').value;
+            if (!url) {
+                showStatus('Please enter a valid URL', 'error');
+                return;
+            }
+            
+            // Validate URL format
+            let formattedUrl = url;
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                formattedUrl = 'https://' + url;
+            }
+            
+            try {
+                new URL(formattedUrl);
+            } catch (e) {
+                showStatus('Please enter a valid URL', 'error');
+                return;
+            }
+            
+            // Check if direct proxy is enabled
+            const useDirectProxy = document.getElementById('use-direct-proxy').checked;
+            const useWebSockets = document.getElementById('use-websockets').checked;
+            
+            // Save to history
+            saveToHistory(formattedUrl);
+            
+            // Navigate to the appropriate proxy URL
+            if (useDirectProxy) {
+                const targetUrl = `/direct-proxy?url=${encodeURIComponent(formattedUrl)}&ws=${useWebSockets ? 'true' : 'false'}`;
+                window.open(targetUrl, '_blank');
+                showStatus('Using Direct Proxy Mode');
+            } else {
+                window.open(`/proxy?url=${encodeURIComponent(formattedUrl)}`, '_blank');
+            }
+        };
+        
+        // Request a new proxy session
+        const newSession = () => {
+            window.open('/session', '_blank');
+            showStatus('New proxy session started!');
+        };
+        
+        // Test connection to the proxy
+        const testConnection = async () => {
+            showStatus('Testing connection...', 'info');
+            
+            try {
+                const response = await fetch('/test-connection');
+                const data = await response.json();
+                
+                if (data.success) {
+                    showStatus('Connection test successful!');
+                } else {
+                    showStatus('Connection test failed: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showStatus('Connection test failed: ' + error.message, 'error');
+            }
+        };
+        
+        // Show status message
+        const showStatus = (message, type = 'success') => {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.style.display = 'block';
+            
+            if (type === 'error') {
+                statusEl.style.backgroundColor = '#fdecea';
+                statusEl.style.color = '#d32f2f';
+            } else if (type === 'info') {
+                statusEl.style.backgroundColor = '#e3f2fd';
+                statusEl.style.color = '#0d47a1';
+            } else {
+                statusEl.style.backgroundColor = '#edf7ed';
+                statusEl.style.color = '#2e7d32';
+            }
+            
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 3000);
+        };
+        
+        // Initialize
+        loadHistory();
+        
+        // Allow pressing Enter to submit
+        document.getElementById('url').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                navigateToProxy();
+            }
+        });
+    </script>
+</body>
+</html>
